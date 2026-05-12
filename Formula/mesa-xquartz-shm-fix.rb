@@ -31,6 +31,11 @@ class MesaXquartzShmFix < Formula
     sha256 "9f778e93289bd410bb35daadeb4fc66d95a746f0b75777b942088b7fd7af550a"
   end
 
+  resource "pyyaml" do
+    url "https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz"
+    sha256 "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f"
+  end
+
   # Patch: fix xshm_opcode never initialized and add XShmAttach fallback
   # for XQuartz on macOS. Without this, Mesa crashes with either:
   #   BadShmSeg on X_ShmPutImage, or
@@ -51,6 +56,9 @@ class MesaXquartzShmFix < Formula
     mako_site.mkpath
     resource("mako").stage do
       cp_r "mako", mako_site
+    end
+    resource("pyyaml").stage do
+      cp_r "yaml", mako_site
     end
     ENV.prepend_path "PYTHONPATH", mako_site.to_s
 
