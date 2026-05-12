@@ -1,4 +1,6 @@
 class MesaXquartzShmFix < Formula
+  include Language::Python::Virtualenv
+
   desc "Mesa 3D graphics library with XQuartz MIT-SHM fix (demonstration)"
   homepage "https://www.mesa3d.org/"
   url "https://gitlab.freedesktop.org/mesa/mesa/-/archive/main/mesa-main.tar.gz"
@@ -23,9 +25,11 @@ class MesaXquartzShmFix < Formula
   depends_on "llvm"
   depends_on "zlib"
 
-  # Mako is required by Mesa's build system but not available as a
-  # Homebrew formula, so we vendor it as a resource and copy it
-  # directly onto PYTHONPATH without invoking pip (which is sandboxed).
+  resource "markupsafe" do
+    url "https://files.pythonhosted.org/packages/7e/99/7690b6d4034fffd95959cbe0c02de8deb3098cc577c67bb6a24fe5d7caa7/markupsafe-3.0.3.tar.gz"
+    sha256 "722695808f4b6457b320fdc131280796bdceb04ab50fe1795cd540799ebe1698"
+  end
+
   resource "mako" do
     url "https://files.pythonhosted.org/packages/00/62/791b31e69ae182791ec67f04850f2f062716bbd205483d63a215f3e062d3/mako-1.3.12.tar.gz"
     sha256 "9f778e93289bd410bb35daadeb4fc66d95a746f0b75777b942088b7fd7af550a"
@@ -49,18 +53,12 @@ class MesaXquartzShmFix < Formula
     ENV.append "LDFLAGS", "-L#{Formula["llvm"].opt_lib}"
     ENV.append "CPPFLAGS", "-I#{Formula["llvm"].opt_include}"
 
-    # Copy mako directly onto PYTHONPATH without invoking pip.
-    # Homebrew's sandbox blocks pip from running during the build phase,
-    # so we unpack the tarball and copy the mako package directory manually.
-    mako_site = buildpath/".pip-install"
-    mako_site.mkpath
-    resource("mako").stage do
-      cp_r "mako", mako_site
-    end
-    resource("pyyaml").stage do
-      cp_r "yaml", mako_site
-    end
-    ENV.prepend_path "PYTHONPATH", mako_site.to_s
+    # Build a virtualenv containing mako, markupsafe and pyyaml so
+    # Mesa's build scripts can import them without network access.
+    venv = virtualenv_create(buildpath/".venv", "python3.13")
+    venv.pip_install resources
+    ENV.prepend_path "PYTHONPATH",
+                     buildpath/".venv/lib/python3.13/site-packages"
 
     args = %w[
       -Dglx=dri
@@ -69,7 +67,8 @@ class MesaXquartzShmFix < Formula
       -Dplatforms=x11
       -Dllvm=enabled
       -Dshared-llvm=enabled
- ]
+    ]
+
     system "meson", "setup", "build", *args, *std_meson_args
     system "ninja", "-C", "build"
     system "ninja", "-C", "build", "install"
@@ -116,7 +115,7 @@ diff --git a/src/glx/drisw_glx.c b/src/glx/drisw_glx.c
 +      return 0;
 +
     if (event->request_code != xshm_opcode)
-       return 0;
+      return 0;
  
 @@ -78,6 +85,33 @@
     }
