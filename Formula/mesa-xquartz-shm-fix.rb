@@ -71,8 +71,14 @@ class MesaXquartzShmFix < Formula
 
     system "meson", "setup", "build", *args, *std_meson_args
     system "ninja", "-C", "build"
-    system "ninja", "-C", "build", "install"
-  end
+    #system "ninja", "-C", "build", "install"
+      # Copy manually to avoid install_megadrivers.py hanging on macOS
+      lib.mkpath
+      (lib/"dri").mkpath
+      cp_r Dir["build/src/glx/libGL*"], lib
+      cp_r Dir["build/src/gallium/targets/dri/*.dylib"], lib/"dri"
+      cp_r Dir["build/src/gallium/targets/dri/*.so"], lib/"dri"
+   end
 
   def caveats
     <<~EOS
