@@ -24,7 +24,8 @@ class MesaXquartzShmFix < Formula
   depends_on "zlib"
 
   # Mako is required by Mesa's build system but not available as a
-  # Homebrew formula, so we vendor it as a resource.
+  # Homebrew formula, so we vendor it as a resource and copy it
+  # directly onto PYTHONPATH without invoking pip (which is sandboxed).
   resource "mako" do
     url "https://files.pythonhosted.org/packages/00/62/791b31e69ae182791ec67f04850f2f062716bbd205483d63a215f3e062d3/mako-1.3.12.tar.gz"
     sha256 "9f778e93289bd410bb35daadeb4fc66d95a746f0b75777b942088b7fd7af550a"
@@ -43,16 +44,15 @@ class MesaXquartzShmFix < Formula
     ENV.append "LDFLAGS", "-L#{Formula["llvm"].opt_lib}"
     ENV.append "CPPFLAGS", "-I#{Formula["llvm"].opt_include}"
 
-    # Install mako into a local prefix that meson can find.
-    # We can't use pip install at build time (no network), so we stage
-    # the vendored resource and install it from the tarball.
-    python = Formula["python@3.13"].opt_bin/"python3"
+    # Copy mako directly onto PYTHONPATH without invoking pip.
+    # Homebrew's sandbox blocks pip from running during the build phase,
+    # so we unpack the tarball and copy the mako package directory manually.
+    mako_site = buildpath/".pip-install"
+    mako_site.mkpath
     resource("mako").stage do
-      system python, "-m", "pip", "install", "--no-deps", "--no-build-isolation",
-		"--no-cache-dir", "--prefix=#{buildpath}/.pip-install", "."
+      cp_r "mako", mako_site
     end
-    ENV.prepend_path "PYTHONPATH",
-                     "#{buildpath}/.pip-install/lib/python3.13/site-packages"
+    ENV.prepend_path "PYTHONPATH", mako_site.to_s
 
     args = %w[
       -Dglx=dri
