@@ -1,12 +1,10 @@
-class MesaXquartyShmFix < Formula
+class MesaXquartzShmFix < Formula
   desc "Mesa 3D graphics library with XQuartz MIT-SHM fix (demonstration)"
   homepage "https://www.mesa3d.org/"
   url "https://gitlab.freedesktop.org/mesa/mesa/-/archive/main/mesa-main.tar.gz"
   version "main"
   license "MIT"
   head "https://gitlab.freedesktop.org/mesa/mesa.git", branch: "main"
-
-  bottle :unneeded
 
   depends_on "bison" => :build
   depends_on "meson" => :build
@@ -24,8 +22,13 @@ class MesaXquartyShmFix < Formula
   depends_on "libxshmfence"
   depends_on "llvm"
   depends_on "zlib"
-  depends_on :macos
-  depends_on :x11  # requires XQuartz
+
+  # Mako is required by Mesa's build system but not available as a
+  # Homebrew formula, so we vendor it as a resource.
+  resource "mako" do
+    url "https://files.pythonhosted.org/packages/00/62/791b31e69ae182791ec67f04850f2f062716bbd205483d63a215f3e062d3/mako-1.3.12.tar.gz"
+    sha256 "9f778e93289bd410bb35daadeb4fc66d95a746f0b75777b942088b7fd7af550a"
+  end
 
   # Patch: fix xshm_opcode never initialized and add XShmAttach fallback
   # for XQuartz on macOS. Without this, Mesa crashes with either:
@@ -40,9 +43,16 @@ class MesaXquartyShmFix < Formula
     ENV.append "LDFLAGS", "-L#{Formula["llvm"].opt_lib}"
     ENV.append "CPPFLAGS", "-I#{Formula["llvm"].opt_include}"
 
-    # Install mako for the build scripts
-    system Formula["python@3.13"].opt_bin/"python3", "-m", "pip", "install",
-           "--quiet", "mako"
+    # Install mako into a local prefix that meson can find.
+    # We can't use pip install at build time (no network), so we stage
+    # the vendored resource and install it from the tarball.
+    python = Formula["python@3.13"].opt_bin/"python3"
+    resource("mako").stage do
+      system python, "-m", "pip", "install", "--no-deps", "--no-build-isolation",
+             "--prefix=#{buildpath}/.pip-install", "."
+    end
+    ENV.prepend_path "PYTHONPATH",
+                     "#{buildpath}/.pip-install/lib/python3.13/site-packages"
 
     args = %w[
       -Dglx=dri
@@ -77,7 +87,6 @@ class MesaXquartyShmFix < Formula
   end
 
   test do
-    # Just verify the library was built and contains the patch string
     assert_match "MIT-SHM attach rejected",
                  shell_output("strings #{lib}/libGL.1.dylib")
   end
