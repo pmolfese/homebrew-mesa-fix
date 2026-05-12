@@ -61,9 +61,7 @@ class MesaXquartzShmFix < Formula
       -Dplatforms=x11
       -Dllvm=enabled
       -Dshared-llvm=enabled
-      -Dbuildtype=release
-    ]
-
+ ]
     system "meson", "setup", "build", *args, *std_meson_args
     system "ninja", "-C", "build"
     system "ninja", "-C", "build", "install"
