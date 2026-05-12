@@ -71,14 +71,47 @@ class MesaXquartzShmFix < Formula
 
     system "meson", "setup", "build", *args, *std_meson_args
     system "ninja", "-C", "build"
-    #system "ninja", "-C", "build", "install"
-      # Copy manually to avoid install_megadrivers.py hanging on macOS
-      lib.mkpath
-      (lib/"dri").mkpath
-      cp_r Dir["build/src/glx/libGL*"], lib
-      cp_r Dir["build/src/gallium/targets/dri/*.dylib"], lib/"dri"
-      cp_r Dir["build/src/gallium/targets/dri/*.so"], lib/"dri"
-   end
+
+    # Skip `ninja install` — it hangs on macOS due to install_megadrivers.py
+    # calling os.path.lexists() on a symlink that causes a filesystem loop
+    # under XQuartz/macOS. Instead copy the libraries we need manually.
+    lib.mkpath
+    (lib/"dri").mkpath
+    include.mkpath
+
+    # Copy the main GL library
+    cp Dir["build/src/glx/libGL*.dylib"], lib
+
+    # Copy the gallium library that libGL depends on
+    cp Dir["build/src/gallium/targets/dri/libgallium*.dylib"], lib
+
+    # Copy DRI drivers
+    cp Dir["build/src/gallium/targets/dri/*.dylib"], lib/"dri"
+    cp Dir["build/src/gallium/targets/dri/*.so"], lib/"dri"
+
+    # Copy headers
+    cp_r Dir["include/GL"], include
+
+    # Fix the rpath in libGL so it finds libgallium in the same lib dir
+    # without needing DYLD_LIBRARY_PATH at runtime.
+    libgl = lib/"libGL.1.dylib"
+    gallium = Dir[lib/"libgallium*.dylib"].first
+    if gallium
+      gallium_name = File.basename(gallium)
+      # Change the embedded rpath reference to point to our lib dir
+      system "install_name_tool", "-change",
+             "@rpath/#{gallium_name}",
+             "#{lib}/#{gallium_name}",
+             libgl
+      # Also fix the install name of libGL itself
+      system "install_name_tool", "-id", "#{lib}/libGL.1.dylib", libgl
+      # And fix the install name of libgallium itself
+      system "install_name_tool", "-id", "#{lib}/#{gallium_name}", gallium
+    end
+
+    # Create the unversioned symlink libGL.dylib -> libGL.1.dylib
+    lib.install_symlink "libGL.1.dylib" => "libGL.dylib"
+  end
 
   def caveats
     <<~EOS
@@ -87,11 +120,14 @@ class MesaXquartzShmFix < Formula
       xshm_opcode via XQueryExtension and fall back gracefully to XPutImage
       when XQuartz rejects the SHM attach.
 
-      To use with glxgears or another X11 app, set:
-        export DYLD_LIBRARY_PATH="#{opt_lib}:$DYLD_LIBRARY_PATH"
-        export LIBGL_DRIVERS_PATH="#{opt_lib}/dri"
+      To build SUMA/AFNI against this Mesa, set in your Makefile or build:
+        BREWLIBDIR=#{opt_lib}
+        BREWINCDIR=#{opt_include}
 
-      You should see this message on first run, confirming the fix is active:
+      Or set at link time:
+        -L#{opt_lib} -I#{opt_include}
+
+      You should see this on first run confirming the fix is active:
         MESA: warning: MIT-SHM attach rejected by X server (error 10);
         falling back to XPutImage
     EOS
@@ -100,6 +136,8 @@ class MesaXquartzShmFix < Formula
   test do
     assert_match "MIT-SHM attach rejected",
                  shell_output("strings #{lib}/libGL.1.dylib")
+    # Verify libGL can find libgallium without DYLD_LIBRARY_PATH
+    system "otool", "-L", "#{lib}/libGL.1.dylib"
   end
 end
 
