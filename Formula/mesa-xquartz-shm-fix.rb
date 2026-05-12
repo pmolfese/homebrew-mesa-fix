@@ -49,7 +49,7 @@ class MesaXquartzShmFix < Formula
     python = Formula["python@3.13"].opt_bin/"python3"
     resource("mako").stage do
       system python, "-m", "pip", "install", "--no-deps", "--no-build-isolation",
-             "--prefix=#{buildpath}/.pip-install", "."
+		"--no-cache-dir", "--prefix=#{buildpath}/.pip-install", "."
     end
     ENV.prepend_path "PYTHONPATH",
                      "#{buildpath}/.pip-install/lib/python3.13/site-packages"
